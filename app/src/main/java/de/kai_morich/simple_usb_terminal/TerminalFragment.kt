@@ -1,6 +1,5 @@
 package de.kai_morich.simple_usb_terminal
 
-import android.app.Activity
 import android.app.PendingIntent
 import android.content.*
 import android.hardware.usb.UsbDevice
@@ -17,6 +16,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.hoho.android.usbserial.driver.SerialTimeoutException
 import com.hoho.android.usbserial.driver.UsbSerialPort
@@ -58,8 +58,11 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setHasOptionsMenu(true)
-        retainInstance = true
+        requireActivity().bindService(
+            Intent(activity, SerialService::class.java),
+            this,
+            Context.BIND_AUTO_CREATE
+        )
         deviceId = requireArguments().getInt("device")
         portNum = requireArguments().getInt("port")
         baudRate = requireArguments().getInt("baud")
@@ -73,7 +76,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
 
     override fun onStart() {
         super.onStart()
-        if (service != null) service!!.attach(this) else requireActivity().startService(
+        if (service != null) service?.attach(this) else requireActivity().startService(
             Intent(
                 activity,
                 SerialService::class.java
@@ -84,15 +87,6 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
     override fun onStop() {
         if (service != null && !requireActivity().isChangingConfigurations) service!!.detach()
         super.onStop()
-    }
-
-    override fun onAttach(activity: Activity) {
-        super.onAttach(activity)
-        requireActivity().bindService(
-            Intent(getActivity(), SerialService::class.java),
-            this,
-            Context.BIND_AUTO_CREATE
-        )
     }
 
     override fun onDetach() {
@@ -144,11 +138,16 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
         val view = inflater.inflate(R.layout.fragment_terminal, container, false)
         receiveText =
             view.findViewById(R.id.receive_text) // TextView performance decreases with number of spans
-        receiveText?.setTextColor(resources.getColor(R.color.colorRecieveText)) // set as default color to reduce number of spans
+        receiveText?.setTextColor(
+            ContextCompat.getColor(
+                requireContext(),
+                R.color.colorRecieveText
+            )
+        ) // set as default color to reduce number of spans
         receiveText?.movementMethod = ScrollingMovementMethod.getInstance()
         sendText = view.findViewById(R.id.send_text)
         val sendBtn = view.findViewById<View>(R.id.send_btn)
-        sendBtn.setOnClickListener { v: View? -> send(sendText?.text.toString()) }
+        sendBtn.setOnClickListener { send(sendText?.text.toString()) }
         return view
     }
 
@@ -204,7 +203,8 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
                 UsbSerialPort.STOPBITS_1,
                 UsbSerialPort.PARITY_NONE
             )
-            val socket = SerialSocket(requireActivity().applicationContext, usbConnection, usbSerialPort)
+            val socket =
+                SerialSocket(requireActivity().applicationContext, usbConnection, usbSerialPort)
             service!!.connect(socket)
             // usb connect is not asynchronous. connect-success and connect-error are returned immediately from socket.connect
             // for consistency to bluetooth/bluetooth-LE app use same SerialListener and SerialService classes
@@ -226,24 +226,22 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
             return
         }
         try {
-            val msg: String
-            val data: ByteArray
-            msg = str
-            data = (str + newline).toByteArray()
-            val spn = SpannableStringBuilder(
-                """
-    $msg
-    
-    """.trimIndent()
-            )
+            val msg: String = str
+            val data: ByteArray = (str + newline).toByteArray()
+            val spn = SpannableStringBuilder(msg.trimIndent())
             spn.setSpan(
-                ForegroundColorSpan(resources.getColor(R.color.colorSendText)),
+                ForegroundColorSpan(
+                    ContextCompat.getColor(
+                        requireContext(),
+                        R.color.colorSendText
+                    )
+                ),
                 0,
                 spn.length,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
             )
-            receiveText!!.append(spn)
-            service!!.write(data)
+            receiveText?.append(spn)
+            service?.write(data)
         } catch (e: SerialTimeoutException) {
             status("write timeout: " + e.message)
         } catch (e: Exception) {
@@ -255,7 +253,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
         val spn = SpannableStringBuilder()
         for (data in datas) {
             var msg = String(data)
-            if (newline == TextUtil.newline_crlf && msg.length > 0) {
+            if (newline == TextUtil.newline_crlf && msg.isNotEmpty()) {
                 // don't show CR as ^M if directly before LF
                 msg = msg.replace(TextUtil.newline_crlf, TextUtil.newline_lf)
                 // special handling if CR and LF come in separate fragments
@@ -269,20 +267,15 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
                 }
                 pendingNewline = msg[msg.length - 1] == '\r'
             }
-            spn.append(TextUtil.toCaretString(msg, newline.length != 0))
+            spn.append(TextUtil.toCaretString(msg, newline.isNotEmpty()))
         }
         receiveText!!.append(spn)
     }
 
     fun status(str: String) {
-        val spn = SpannableStringBuilder(
-            """
-    $str
-    
-    """.trimIndent()
-        )
+        val spn = SpannableStringBuilder(str.trimIndent())
         spn.setSpan(
-            ForegroundColorSpan(resources.getColor(R.color.colorStatusText)),
+            ForegroundColorSpan(ContextCompat.getColor(requireContext(), R.color.colorStatusText)),
             0,
             spn.length,
             Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
