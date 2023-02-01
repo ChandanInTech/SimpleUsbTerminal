@@ -14,7 +14,6 @@ import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -22,11 +21,12 @@ import com.hoho.android.usbserial.driver.SerialTimeoutException
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import de.kai_morich.simple_usb_terminal.SerialService.SerialBinder
+import de.kai_morich.simple_usb_terminal.databinding.FragmentTerminalBinding
 import java.util.*
 
 class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
     private enum class Connected {
-        False, Pending, True
+        FALSE, PENDING, TRUE
     }
 
     private val broadcastReceiver: BroadcastReceiver
@@ -35,12 +35,11 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
     private var baudRate = 0
     private var usbSerialPort: UsbSerialPort? = null
     private var service: SerialService? = null
-    private var receiveText: TextView? = null
-    private var sendText: TextView? = null
-    private var connected = Connected.False
+    private var connected = Connected.FALSE
     private var initialStart = true
     private val newline = TextUtil.newline_crlf
     private var pendingNewline = false
+    private lateinit var binding: FragmentTerminalBinding
 
     init {
         broadcastReceiver = object : BroadcastReceiver() {
@@ -69,7 +68,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
     }
 
     override fun onDestroy() {
-        if (connected != Connected.False) disconnect()
+        if (connected != Connected.FALSE) disconnect()
         requireActivity().stopService(Intent(activity, SerialService::class.java))
         super.onDestroy()
     }
@@ -85,7 +84,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
     }
 
     override fun onStop() {
-        if (service != null && !requireActivity().isChangingConfigurations) service!!.detach()
+        if (service != null && !requireActivity().isChangingConfigurations) service?.detach()
         super.onStop()
     }
 
@@ -134,21 +133,18 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
-        val view = inflater.inflate(R.layout.fragment_terminal, container, false)
-        receiveText =
-            view.findViewById(R.id.receive_text) // TextView performance decreases with number of spans
-        receiveText?.setTextColor(
+    ): View {
+
+        binding = FragmentTerminalBinding.inflate(inflater, container, false)
+        binding.receiveText.setTextColor(
             ContextCompat.getColor(
                 requireContext(),
                 R.color.colorRecieveText
             )
         ) // set as default color to reduce number of spans
-        receiveText?.movementMethod = ScrollingMovementMethod.getInstance()
-        sendText = view.findViewById(R.id.send_text)
-        val sendBtn = view.findViewById<View>(R.id.send_btn)
-        sendBtn.setOnClickListener { send(sendText?.text.toString()) }
-        return view
+        binding.receiveText.movementMethod = ScrollingMovementMethod.getInstance()
+        binding.sendBtn.setOnClickListener { send(binding.sendText.text.toString()) }
+        return binding.root
     }
 
     /*
@@ -194,7 +190,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
             )
             return
         }
-        connected = Connected.Pending
+        connected = Connected.PENDING
         try {
             usbSerialPort?.open(usbConnection)
             usbSerialPort?.setParameters(
@@ -205,7 +201,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
             )
             val socket =
                 SerialSocket(requireActivity().applicationContext, usbConnection, usbSerialPort)
-            service!!.connect(socket)
+            service?.connect(socket)
             // usb connect is not asynchronous. connect-success and connect-error are returned immediately from socket.connect
             // for consistency to bluetooth/bluetooth-LE app use same SerialListener and SerialService classes
             onSerialConnect()
@@ -215,13 +211,13 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
     }
 
     private fun disconnect() {
-        connected = Connected.False
-        service!!.disconnect()
+        connected = Connected.FALSE
+        service?.disconnect()
         usbSerialPort = null
     }
 
     private fun send(str: String) {
-        if (connected != Connected.True) {
+        if (connected != Connected.TRUE) {
             Toast.makeText(activity, "not connected", Toast.LENGTH_SHORT).show()
             return
         }
@@ -240,7 +236,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
                 spn.length,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
             )
-            receiveText?.append(spn)
+            binding.receiveText.append(spn)
             service?.write(data)
         } catch (e: SerialTimeoutException) {
             status("write timeout: " + e.message)
@@ -261,7 +257,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
                     if (spn.length >= 2) {
                         spn.delete(spn.length - 2, spn.length)
                     } else {
-                        val edt = receiveText!!.editableText
+                        val edt = binding.receiveText.editableText
                         if (edt != null && edt.length >= 2) edt.delete(edt.length - 2, edt.length)
                     }
                 }
@@ -269,7 +265,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
             }
             spn.append(TextUtil.toCaretString(msg, newline.isNotEmpty()))
         }
-        receiveText!!.append(spn)
+        binding.receiveText.append(spn)
     }
 
     fun status(str: String) {
@@ -280,7 +276,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
             spn.length,
             Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )
-        receiveText!!.append(spn)
+        binding.receiveText.append(spn)
     }
 
     /*
@@ -288,7 +284,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
      */
     override fun onSerialConnect() {
         status("connected")
-        connected = Connected.True
+        connected = Connected.TRUE
     }
 
     override fun onSerialConnectError(e: Exception) {
