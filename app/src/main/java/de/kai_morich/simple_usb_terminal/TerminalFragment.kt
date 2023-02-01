@@ -84,10 +84,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
     }
 
     override fun onDetach() {
-        try {
-            requireActivity().unbindService(this)
-        } catch (ignored: Exception) {
-        }
+        requireActivity().unbindService(this)
         super.onDetach()
     }
 
@@ -117,6 +114,8 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
         }
     }
 
+    var count = 0
+
     override fun onServiceDisconnected(name: ComponentName) {
         service = null
     }
@@ -129,7 +128,6 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-
         binding = FragmentTerminalBinding.inflate(inflater, container, false)
         binding.receiveText.setTextColor(
             ContextCompat.getColor(
@@ -139,6 +137,14 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
         ) // set as default color to reduce number of spans
         binding.receiveText.movementMethod = ScrollingMovementMethod.getInstance()
         binding.sendBtn.setOnClickListener { send(binding.sendText.text.toString()) }
+        binding.ledButton.setOnClickListener {
+            if (count == 0) {
+                send("from machine import Pin as pin")
+                send("import time")
+            }
+            count++
+            send("pin('LED', pin.OUT, value=${count%2})")
+        }
         return binding.root
     }
 
@@ -146,10 +152,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
      * Serial + UI
      */
     private fun connect(permissionGranted: Boolean? = null) {
-//        var device: UsbDevice? = null
         val usbManager = requireActivity().getSystemService(Context.USB_SERVICE) as UsbManager
-//        for (v in usbManager.deviceList.values) if (v.deviceId == viewModel.deviceId) device = v
-
         val device = usbManager.deviceList.values.firstOrNull { it.deviceId == viewModel.deviceId }
 
         if (device == null) {
