@@ -22,7 +22,7 @@ import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import de.kai_morich.simple_usb_terminal.SerialService.SerialBinder
 import de.kai_morich.simple_usb_terminal.databinding.FragmentTerminalBinding
-import java.util.*
+import java.util.ArrayDeque
 
 class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
     private enum class Connected {
