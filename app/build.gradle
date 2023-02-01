@@ -1,11 +1,12 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
-    compileSdkVersion 32
+    compileSdkVersion 33
     defaultConfig {
-        targetSdkVersion 32
+        targetSdkVersion 33
         minSdkVersion 18
         vectorDrawables.useSupportLibrary true
 
@@ -32,4 +33,5 @@ dependencies {
 
     implementation 'androidx.appcompat:appcompat:1.5.1'
     implementation 'com.google.android.material:material:1.7.0'
+    implementation 'androidx.core:core-ktx:+'
 }

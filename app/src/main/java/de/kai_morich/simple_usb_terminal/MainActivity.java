@@ -35,7 +35,7 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
     @Override
     protected void onNewIntent(Intent intent) {
         if ("android.hardware.usb.action.USB_DEVICE_ATTACHED".equals(intent.getAction())) {
-            TerminalFragment terminal = (TerminalFragment)getSupportFragmentManager().findFragmentByTag("terminal");
+            TerminalFragment terminal = (TerminalFragment) getSupportFragmentManager().findFragmentByTag("terminal");
             if (terminal != null)
                 terminal.status("USB device detected");
         }
