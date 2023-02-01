@@ -17,6 +17,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
 import com.hoho.android.usbserial.driver.SerialTimeoutException
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
@@ -25,21 +26,11 @@ import de.kai_morich.simple_usb_terminal.databinding.FragmentTerminalBinding
 import java.util.ArrayDeque
 
 class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
-    private enum class Connected {
-        FALSE, PENDING, TRUE
-    }
-
     private val broadcastReceiver: BroadcastReceiver
-    private var deviceId = 0
-    private var portNum = 0
-    private var baudRate = 0
     private var usbSerialPort: UsbSerialPort? = null
     private var service: SerialService? = null
-    private var connected = Connected.FALSE
-    private var initialStart = true
-    private val newline = TextUtil.newline_crlf
-    private var pendingNewline = false
     private lateinit var binding: FragmentTerminalBinding
+    private val viewModel: TerminalViewModel by viewModels()
 
     init {
         broadcastReceiver = object : BroadcastReceiver() {
@@ -62,25 +53,29 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
             this,
             Context.BIND_AUTO_CREATE
         )
-        deviceId = requireArguments().getInt("device")
-        portNum = requireArguments().getInt("port")
-        baudRate = requireArguments().getInt("baud")
+        viewModel.deviceId = requireArguments().getInt("device")
+        viewModel.portNum = requireArguments().getInt("port")
+        viewModel.baudRate = requireArguments().getInt("baud")
     }
 
     override fun onDestroy() {
-        if (connected != Connected.FALSE) disconnect()
+        if (viewModel.connected != TerminalViewModel.Connected.FALSE) disconnect()
         requireActivity().stopService(Intent(activity, SerialService::class.java))
         super.onDestroy()
     }
 
     override fun onStart() {
         super.onStart()
-        if (service != null) service?.attach(this) else requireActivity().startService(
-            Intent(
-                activity,
-                SerialService::class.java
-            )
-        ) // prevents service destroy on unbind from recreated activity caused by orientation change
+        if (service != null) {
+            service?.attach(this)
+        } else {
+            requireActivity().startService(
+                Intent(
+                    activity,
+                    SerialService::class.java
+                )
+            ) // prevents service destroy on unbind from recreated activity caused by orientation change
+        }
     }
 
     override fun onStop() {
@@ -102,8 +97,8 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
             broadcastReceiver,
             IntentFilter(Constants.INTENT_ACTION_GRANT_USB)
         )
-        if (initialStart && service != null) {
-            initialStart = false
+        if (viewModel.initialStart && service != null) {
+            viewModel.initialStart = false
             requireActivity().runOnUiThread { connect() }
         }
     }
@@ -116,8 +111,8 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
     override fun onServiceConnected(name: ComponentName, binder: IBinder) {
         service = (binder as SerialBinder).service
         service?.attach(this)
-        if (initialStart && isResumed) {
-            initialStart = false
+        if (viewModel.initialStart && isResumed) {
+            viewModel.initialStart = false
             requireActivity().runOnUiThread { connect() }
         }
     }
@@ -151,9 +146,12 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
      * Serial + UI
      */
     private fun connect(permissionGranted: Boolean? = null) {
-        var device: UsbDevice? = null
+//        var device: UsbDevice? = null
         val usbManager = requireActivity().getSystemService(Context.USB_SERVICE) as UsbManager
-        for (v in usbManager.deviceList.values) if (v.deviceId == deviceId) device = v
+//        for (v in usbManager.deviceList.values) if (v.deviceId == viewModel.deviceId) device = v
+
+        val device = usbManager.deviceList.values.firstOrNull { it.deviceId == viewModel.deviceId }
+
         if (device == null) {
             status("connection failed: device not found")
             return
@@ -166,11 +164,11 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
             status("connection failed: no driver for device")
             return
         }
-        if (driver.ports.size < portNum) {
+        if (driver.ports.size < viewModel.portNum) {
             status("connection failed: not enough ports at device")
             return
         }
-        usbSerialPort = driver.ports[portNum]
+        usbSerialPort = driver.ports[viewModel.portNum]
         val usbConnection = usbManager.openDevice(driver.device)
         if (usbConnection == null && permissionGranted == null && !usbManager.hasPermission(driver.device)) {
             val flags =
@@ -190,11 +188,11 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
             )
             return
         }
-        connected = Connected.PENDING
+        viewModel.connected = TerminalViewModel.Connected.PENDING
         try {
             usbSerialPort?.open(usbConnection)
             usbSerialPort?.setParameters(
-                baudRate,
+                viewModel.baudRate,
                 UsbSerialPort.DATABITS_8,
                 UsbSerialPort.STOPBITS_1,
                 UsbSerialPort.PARITY_NONE
@@ -211,19 +209,19 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
     }
 
     private fun disconnect() {
-        connected = Connected.FALSE
+        viewModel.connected = TerminalViewModel.Connected.FALSE
         service?.disconnect()
         usbSerialPort = null
     }
 
     private fun send(str: String) {
-        if (connected != Connected.TRUE) {
+        if (viewModel.connected != TerminalViewModel.Connected.TRUE) {
             Toast.makeText(activity, "not connected", Toast.LENGTH_SHORT).show()
             return
         }
         try {
             val msg: String = str
-            val data: ByteArray = (str + newline).toByteArray()
+            val data: ByteArray = (str + viewModel.newline).toByteArray()
             val spn = SpannableStringBuilder(msg.trimIndent())
             spn.setSpan(
                 ForegroundColorSpan(
@@ -249,11 +247,11 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
         val spn = SpannableStringBuilder()
         for (data in datas) {
             var msg = String(data)
-            if (newline == TextUtil.newline_crlf && msg.isNotEmpty()) {
+            if (viewModel.newline == TextUtil.newline_crlf && msg.isNotEmpty()) {
                 // don't show CR as ^M if directly before LF
                 msg = msg.replace(TextUtil.newline_crlf, TextUtil.newline_lf)
                 // special handling if CR and LF come in separate fragments
-                if (pendingNewline && msg[0] == '\n') {
+                if (viewModel.pendingNewline && msg[0] == '\n') {
                     if (spn.length >= 2) {
                         spn.delete(spn.length - 2, spn.length)
                     } else {
@@ -261,9 +259,9 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
                         if (edt != null && edt.length >= 2) edt.delete(edt.length - 2, edt.length)
                     }
                 }
-                pendingNewline = msg[msg.length - 1] == '\r'
+                viewModel.pendingNewline = msg[msg.length - 1] == '\r'
             }
-            spn.append(TextUtil.toCaretString(msg, newline.isNotEmpty()))
+            spn.append(TextUtil.toCaretString(msg, viewModel.newline.isNotEmpty()))
         }
         binding.receiveText.append(spn)
     }
@@ -284,7 +282,7 @@ class TerminalFragment : Fragment(), ServiceConnection, SerialListener {
      */
     override fun onSerialConnect() {
         status("connected")
-        connected = Connected.TRUE
+        viewModel.connected = TerminalViewModel.Connected.TRUE
     }
 
     override fun onSerialConnectError(e: Exception) {
